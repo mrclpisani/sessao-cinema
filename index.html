@@ -11,7 +11,8 @@
   video { flex: 1; min-height: 0; width: 100%; background: #000; object-fit: contain }
   #inicio { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; text-align: center }
   h1 { font-size: 22px; font-weight: 600; margin: 0 }
-  #dica { color: #a3a19b; margin: 0; max-width: 34em }
+  #dica, #rede { color: #a3a19b; margin: 0; max-width: 34em }
+  #testar { background: none; border: 0; color: #a3a19b; font-size: 13px; text-decoration: underline }
   #aviso { color: #ffcf70; margin: 0; padding: 6px 12px; text-align: center }
   #aviso:empty { display: none }
   #barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: #17171a; border-top: 1px solid #2a2a2f }
@@ -30,6 +31,8 @@
   <h1>Sessão de cinema</h1>
   <p id="dica"></p>
   <button id="acao"></button>
+  <button id="testar">Testar minha rede</button>
+  <p id="rede" role="status"></p>
 </div>
 <video id="video" playsinline hidden></video>
 <p id="aviso" role="status"></p>
@@ -220,6 +223,29 @@ function fim() {
   $('acao').disabled = false;
   avisar('A sessão terminou ou o link não vale mais.');
 }
+
+// ---------- diagnóstico de rede ----------
+
+// Pergunta o endereço público a dois servidores. Se cada um enxerga uma porta diferente, o NAT é do
+// tipo que impede conexão direta (comum em 4G, CGNAT e VPN). IPv6 público contorna o NAT.
+async function testarRede() {
+  $('rede').textContent = 'Testando a rede…';
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }] });
+  const candidatos = [];
+  pc.onicecandidate = e => { if (e.candidate) candidatos.push(e.candidate); };
+  pc.createDataChannel('teste');
+  await pc.setLocalDescription(await pc.createOffer());
+  await new Promise(fim => { pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && fim(); setTimeout(fim, 8000); });
+  pc.close();
+  const publicos = candidatos.filter(c => c.type === 'srflx');
+  const portasV4 = new Set(publicos.filter(c => !c.address.includes(':')).map(c => c.port));
+  const ipv6 = publicos.some(c => c.address.includes(':')) ? 'IPv6 público: sim.' : 'IPv6 público: não.';
+  $('rede').textContent = (
+    !publicos.length ? 'Sua rede não respondeu por UDP (firewall ou VPN): a conexão direta não vai funcionar.'
+    : portasV4.size > 1 ? 'Sua rede usa NAT restritivo: a conexão direta costuma falhar. Tente sem VPN ou pela rede fixa.'
+    : 'Sua rede aceita conexão direta.') + ' ' + ipv6;
+}
+$('testar').onclick = () => testarRede().catch(() => { $('rede').textContent = 'Não foi possível testar a rede neste navegador.'; });
 
 // ---------- início ----------
 
