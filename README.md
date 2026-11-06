@@ -73,43 +73,12 @@ No celular em pé, o filme ocupa uma faixa e aparece um botão grande de **Tela 
 
 ## Como funciona
 
-```mermaid
-sequenceDiagram
-    participant C as Quem compartilha
-    participant P as Serviço PeerJS
-    participant A as Amigo
-    C->>P: Abre uma sala com código sorteado
-    Note over C,A: O link da sala é enviado por mensagem
-    A->>P: Pede para falar com a sala
-    P-->>C: Apresenta um ao outro
-    C->>A: Desafio: um número sorteado
-    A->>C: Desafio assinado com a chave do aparelho
-    Note over C: Confere a assinatura e a lista de autorizados
-    C->>A: Filme e som, direto entre os dois
-```
+![Diagrama dos passos da conexão: abrir a sala, mandar o link, o PeerJS apresentar os dois navegadores, desafio, resposta assinada, conferência e só então o envio do filme](docs/como-funciona.svg)
 
 - **O serviço PeerJS só apresenta os navegadores.** Ele é um serviço público e gratuito que ajuda um navegador a achar o outro. O filme não passa por ele: vai direto de um navegador para o outro, protegido pela criptografia que o próprio navegador aplica (WebRTC).
 - **A autorização é por aparelho.** Cada navegador cria um par de chaves. A chave privada fica guardada no navegador e não pode ser copiada para fora dele; a chave pública é o "código do aparelho". Antes de enviar o filme, quem compartilha sorteia um desafio e o amigo devolve assinado. Só recebe o vídeo quem assina certo e está na lista.
 - **Ter o link não basta.** Um link vazado não abre a sala para um aparelho que não está em `autorizados.json`.
 - **A página só roda o próprio código.** Uma trava do navegador (CSP) impede carregar código de outros sites, e a biblioteca PeerJS fica guardada aqui no repositório em vez de vir de fora.
-
-## Como foi feito
-
-A página foi construída em 6 de novembro de 2026, em conversa com o Claude Code, um passo de cada vez. Cada passo é um commit no histórico:
-
-1. A primeira versão: compartilhar a tela e assistir pelo link.
-2. Correção da imagem borrada e das quedas de quem assistia.
-3. Prévia sem som para quem compartilha (para não ouvir o filme em dobro) e som de janela.
-4. Atraso de reprodução contra travadas, opção de AV1 e diagnóstico de rede.
-5. Botão "Testar minha rede".
-6. Aviso claro quando as duas redes não se alcançam.
-7. Um selo por amigo na barra e tela cheia no celular.
-8. Reforço de segurança: PeerJS guardado no repositório, CSP, limite de espectadores e avisos.
-9. Cadastro de aparelhos: só participa quem está em `autorizados.json`.
-
-As escolhas de qualidade foram medidas, não chutadas. No computador onde a página foi feita, em 1080p a 6 Mbps: VP9 manteve 30 quadros por segundo; AV1 também, exigindo mais do processador; VP8 ficou em 22; H.264 travou em 2 Mbps. Por isso o VP9 é o padrão. Em outro computador o resultado pode ser diferente, e por isso a escolha fica disponível em **Avançado**.
-
-Não há etapa de montagem nem dependências para instalar: o que está no repositório é exatamente o que o navegador abre. A hospedagem é o GitHub Pages, gratuito.
 
 ## Riscos de usar
 
