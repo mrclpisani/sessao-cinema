@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sessão de cinema</title>
+<style>
+  * { box-sizing: border-box }
+  html, body { height: 100%; margin: 0 }
+  body { background: #0b0b0d; color: #e8e6e1; font: 15px/1.4 system-ui, sans-serif; display: flex; flex-direction: column }
+  [hidden] { display: none !important }
+  video { flex: 1; min-height: 0; width: 100%; background: #000; object-fit: contain }
+  #inicio { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; text-align: center }
+  h1 { font-size: 22px; font-weight: 600; margin: 0 }
+  #dica { color: #a3a19b; margin: 0; max-width: 34em }
+  #aviso { color: #ffcf70; margin: 0; padding: 6px 12px; text-align: center }
+  #aviso:empty { display: none }
+  #barra { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: #17171a; border-top: 1px solid #2a2a2f }
+  button, select, input { font: inherit; color: inherit; background: #232327; border: 1px solid #3a3a40; border-radius: 8px; padding: 7px 12px }
+  button { cursor: pointer }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #8ab4ff; outline-offset: 1px }
+  #acao { background: #e8e6e1; color: #0b0b0d; border: 0; font-size: 17px; font-weight: 600; padding: 12px 24px }
+  #acao:disabled { opacity: .5; cursor: default }
+  #link { flex: 1; min-width: 160px; font-family: ui-monospace, monospace; font-size: 13px }
+  #contador { background: #16301f; color: #8fe0a8; border-radius: 8px; padding: 7px 12px; white-space: nowrap }
+  #parar { color: #ff8a80 }
+</style>
+
+<div id="inicio">
+  <h1>Sessão de cinema</h1>
+  <p id="dica"></p>
+  <button id="acao"></button>
+</div>
+<video id="video" playsinline hidden></video>
+<p id="aviso" role="status"></p>
+<div id="barra" hidden>
+  <input id="link" readonly aria-label="Link da sala">
+  <button id="copiar">Copiar link</button>
+  <label>Qualidade
+    <select id="qualidade">
+      <option value="3">3 Mbps</option>
+      <option value="6" selected>6 Mbps</option>
+      <option value="10">10 Mbps</option>
+    </select>
+  </label>
+  <span id="contador" role="status">0 assistindo</span>
+  <button id="parar">Parar</button>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const sala = location.hash.slice(1);          // com #código = espectador; sem = quem compartilha
+const chamadas = new Set();
+let peer, stream;
+
+const avisar = texto => { $('aviso').textContent = texto; };
+// O Chrome só envia Opus em estéreo se o SDP pedir; sem isto o filme chega mono.
+const estereo = sdp => sdp.replace(/useinbandfec=1/g, 'useinbandfec=1;stereo=1;maxaveragebitrate=256000');
+
+function tocar(s, opcoes) {
+  const v = $('video');
+  if (v.srcObject === s) return;              // o PeerJS dispara 'stream' uma vez por faixa
+  Object.assign(v, { srcObject: s, hidden: false }, opcoes);
+  $('inicio').hidden = true;
+  v.play().catch(e => { if (e.name === 'NotAllowedError') avisar('Clique no play para iniciar.'); });
+}
+
+// ---------- quem compartilha ----------
+
+function capturar() {
+  if (new URLSearchParams(location.search).has('teste')) return streamDeTeste();
+  return navigator.mediaDevices.getDisplayMedia({
+    video: { frameRate: 30, width: { max: 1920 }, height: { max: 1080 } },
+    // filtros de voz desligados: eles destroem música e efeitos de filme
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 },
+    systemAudio: 'include',
+  });
+}
+
+// Só para a verificação automática (?teste): imagem e som sintéticos, sem o seletor de tela.
+function streamDeTeste() {
+  const c = Object.assign(document.createElement('canvas'), { width: 640, height: 360 });
+  const g = c.getContext('2d');
+  setInterval(() => { g.fillStyle = `hsl(${Date.now() / 20 % 360} 70% 40%)`; g.fillRect(0, 0, 640, 360); }, 33);
+  const audio = new AudioContext(), destino = audio.createMediaStreamDestination(), osc = audio.createOscillator();
+  osc.connect(destino); osc.start();
+  return new MediaStream([...c.captureStream(30).getTracks(), ...destino.stream.getTracks()]);
+}
+
+function limitar(chamada) {
+  const envio = chamada.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+  const p = envio?.getParameters();
+  if (!p?.encodings?.length) return;
+  p.encodings[0].maxBitrate = $('qualidade').value * 1e6;
+  envio.setParameters(p).catch(() => {});
+}
+
+const contar = () => { $('contador').textContent = `${chamadas.size} assistindo`; };
+
+async function compartilhar() {
+  try { stream = await capturar(); }
+  catch { return avisar('Compartilhamento cancelado.'); }
+  const [video] = stream.getVideoTracks();
+  video.contentHint = 'motion';               // filme: prioriza fluidez em vez de nitidez de texto
+  video.onended = parar;                      // botão "parar de compartilhar" do navegador
+  avisar(stream.getAudioTracks().length ? '' : 'Sem áudio: pare e compartilhe de novo marcando a opção de áudio (só aparece para aba ou tela inteira).');
+  tocar(stream, { muted: true });
+
+  peer = new Peer(crypto.randomUUID());       // o código da sala é a chave: longo e novo a cada sessão
+  peer.on('open', id => {
+    $('link').value = location.href.split('#')[0] + '#' + id;
+    $('barra').hidden = false;
+  });
+  peer.on('disconnected', () => peer.reconnect());   // sem isto, quem chega atrasado não entra
+  peer.on('error', e => avisar('Erro de conexão: ' + e.type));
+  peer.on('connection', conexao => {
+    const chamada = peer.call(conexao.peer, stream, { sdpTransform: estereo });
+    chamadas.add(chamada); contar();
+    const sair = () => { if (chamadas.delete(chamada)) { chamada.close(); contar(); } };
+    conexao.on('close', sair);
+    chamada.on('close', sair);
+    const pc = chamada.peerConnection;
+    pc.addEventListener('connectionstatechange', () => {
+      if (pc.connectionState === 'connected') limitar(chamada);
+      else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') sair();
+    });
+  });
+}
+
+function parar() {
+  stream?.getTracks().forEach(t => t.stop());
+  peer?.destroy();                            // avisa os amigos que acabou
+  location.reload();
+}
+
+// ---------- quem assiste ----------
+
+function assistir() {
+  $('acao').disabled = true;
+  avisar('Conectando…');
+  peer = new Peer();
+  peer.on('open', () => peer.connect(sala).on('close', fim));
+  peer.on('call', chamada => {
+    chamada.answer(undefined, { sdpTransform: estereo });
+    chamada.on('stream', s => { avisar(''); tocar(s, { controls: true }); });
+    chamada.on('close', fim);
+  });
+  peer.on('error', e => {
+    avisar(e.type === 'peer-unavailable' ? 'Sala não encontrada. Peça um link novo.' : 'Erro de conexão: ' + e.type);
+    $('acao').disabled = false;
+  });
+}
+
+function fim() {
+  peer?.destroy();
+  $('video').hidden = true;
+  $('inicio').hidden = false;
+  $('acao').disabled = false;
+  avisar('A sessão terminou.');
+}
+
+// ---------- início ----------
+
+if (sala) {
+  $('dica').textContent = 'Você foi convidado para assistir.';
+  $('acao').textContent = 'Assistir';
+  $('acao').onclick = assistir;
+  addEventListener('pagehide', () => peer?.destroy());
+} else {
+  $('dica').textContent = 'Escolha uma aba ou a tela inteira e marque a opção de compartilhar o áudio.';
+  $('acao').textContent = 'Compartilhar tela';
+  $('acao').onclick = compartilhar;
+  $('copiar').onclick = () => navigator.clipboard.writeText($('link').value).then(() => {
+    $('copiar').textContent = 'Copiado';
+    setTimeout(() => { $('copiar').textContent = 'Copiar link'; }, 1500);
+  });
+  $('qualidade').onchange = () => chamadas.forEach(limitar);
+  $('parar').onclick = parar;
+}
+</script>
+</html>
