@@ -19,12 +19,33 @@
   button, select, input { font: inherit; color: inherit; background: #232327; border: 1px solid #3a3a40; border-radius: 8px; padding: 7px 12px }
   button { cursor: pointer }
   button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #8ab4ff; outline-offset: 1px }
-  #acao { background: #e8e6e1; color: #0b0b0d; border: 0; font-size: 17px; font-weight: 600; padding: 12px 24px }
+  .principal { background: #e8e6e1; color: #0b0b0d; border-color: #e8e6e1; font-weight: 600 }
+  #acao, #cheia { background: #e8e6e1; color: #0b0b0d; border: 0; font-size: 17px; font-weight: 600; padding: 12px 24px }
   #acao:disabled { opacity: .5; cursor: default }
-  #link { flex: 1; min-width: 160px; font-family: ui-monospace, monospace; font-size: 13px }
-  #contador { background: #16301f; color: #8fe0a8; border-radius: 8px; padding: 7px 12px; white-space: nowrap }
-  #envio { color: #a3a19b; font-size: 13px }
-  #parar { color: #ff8a80 }
+  /* Um selo por amigo, colorido pelo estado; os números ficam na dica ao passar o mouse. */
+  #amigos { display: flex; flex-wrap: wrap; gap: 8px }
+  .selo { display: inline-flex; align-items: center; gap: 6px; background: #232327; color: #a3a19b; border-radius: 8px; padding: 7px 12px; white-space: nowrap; cursor: default }
+  .selo.ok, .selo.alerta { cursor: help }
+  .selo.ok::before, .selo.alerta::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor }
+  .selo.ok { background: #16301f; color: #8fe0a8 }
+  .selo.alerta { background: #3a2c0f; color: #ffcf70 }
+  #semaudio button { padding: 2px 8px; margin-left: 4px }
+  details { position: relative }
+  summary { list-style: none; cursor: pointer; background: #232327; border: 1px solid #3a3a40; border-radius: 8px; padding: 7px 12px }
+  summary::-webkit-details-marker { display: none }
+  summary:focus-visible { outline: 2px solid #8ab4ff; outline-offset: 1px }
+  details > div { position: absolute; bottom: calc(100% + 8px); right: 0; width: 270px; display: flex; flex-direction: column; gap: 8px; background: #17171a; border: 1px solid #3a3a40; border-radius: 8px; padding: 12px }
+  details label { display: flex; flex-direction: column; gap: 4px }
+  details select { width: 100% }
+  details p { margin: 0; color: #a3a19b; font-size: 13px }
+  #parar { color: #ff8a80; margin-left: auto }
+  /* Celular em pé: o filme ocupa só uma faixa, então sobra espaço para um botão grande de tela cheia. */
+  #cheia { display: none }
+  @media (orientation: portrait) and (max-width: 700px) {
+    body.assistindo { justify-content: center; gap: 14px }
+    body.assistindo video { flex: none; height: auto }
+    body.assistindo #cheia { display: block; margin: 0 16px }
+  }
 </style>
 
 <div id="inicio">
@@ -35,25 +56,31 @@
   <p id="rede" role="status"></p>
 </div>
 <video id="video" playsinline hidden></video>
+<button id="cheia">Tela cheia</button>
 <p id="aviso" role="status"></p>
 <div id="barra" hidden>
-  <input id="link" readonly aria-label="Link da sala">
-  <button id="copiar">Copiar link</button>
+  <button id="copiar" class="principal">Copiar link</button>
+  <span id="amigos" aria-label="Quem está assistindo"></span>
+  <span id="semaudio" class="selo alerta" hidden title="O som só vem ao compartilhar uma aba ou a tela inteira, com a opção de áudio marcada.">Sem áudio <button id="denovo">Compartilhar de novo</button></span>
   <label>Qualidade
     <select id="qualidade">
-      <option value="3">3 Mbps</option>
-      <option value="6" selected>6 Mbps</option>
-      <option value="10">10 Mbps</option>
+      <option value="3">Econômica (3 Mbps)</option>
+      <option value="6" selected>Boa (6 Mbps)</option>
+      <option value="10">Máxima (10 Mbps)</option>
     </select>
   </label>
-  <label>Codec
-    <select id="codec">
-      <option value="VP9" selected>VP9 (mais leve)</option>
-      <option value="AV1">AV1 (melhor imagem, mais CPU)</option>
-    </select>
-  </label>
-  <span id="contador" role="status">0 assistindo</span>
-  <span id="envio"></span>
+  <details>
+    <summary>Avançado</summary>
+    <div>
+      <label>Codec
+        <select id="codec">
+          <option value="VP9" selected>VP9 (mais leve)</option>
+          <option value="AV1">AV1 (melhor imagem, mais CPU)</option>
+        </select>
+      </label>
+      <p>Trocar o codec reconecta todos por alguns segundos.</p>
+    </div>
+  </details>
   <button id="parar">Parar</button>
 </div>
 
@@ -108,7 +135,8 @@ function streamDeTeste() {
   setInterval(() => { g.fillStyle = `hsl(${Date.now() / 20 % 360} 70% 40%)`; g.fillRect(0, 0, 640, 360); }, 33);
   const audio = new AudioContext(), destino = audio.createMediaStreamDestination(), osc = audio.createOscillator();
   osc.connect(destino); osc.start();
-  return new MediaStream([...c.captureStream(30).getTracks(), ...destino.stream.getTracks()]);
+  const mudo = new URLSearchParams(location.search).get('teste') === 'mudo';   // ?teste=mudo simula captura sem som
+  return new MediaStream([...c.captureStream(30).getTracks(), ...(mudo ? [] : destino.stream.getTracks())]);
 }
 
 function limitar(chamada) {
@@ -121,50 +149,65 @@ function limitar(chamada) {
   envio.setParameters(p).catch(() => {});
 }
 
-const contar = () => { $('contador').textContent = `${chamadas.size} assistindo`; };
-
-// Mostra o que realmente está saindo para cada amigo: resolução, fps, taxa e o que está limitando.
+// Um selo por amigo: verde quando vai bem, amarelo quando algo segura a qualidade. Os números reais
+// (resolução, fps, taxa, estimativa da rede) ficam na dica do selo.
 const ultima = new WeakMap();
+let linkSala = '';
 async function medir() {
-  const partes = [];
+  const selos = [];
   for (const c of chamadas) {
-    if (!c.peerConnection) continue;
+    const selo = Object.assign(document.createElement('span'), { className: 'selo', textContent: `Amigo ${selos.length + 1}`, title: 'Conectando…' });
+    selos.push(selo);
+    if (c.peerConnection?.connectionState !== 'connected') continue;
     const st = [...(await c.peerConnection.getStats()).values()];
     const o = st.find(s => s.type === 'outbound-rtp' && s.kind === 'video');
     if (!o) continue;
-    // Quanto a rede acha que aguenta, e se o caminho passa por um servidor de retransmissão (mais lento).
     const par = st.find(s => s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded');
-    const rede = par?.availableOutgoingBitrate ? `, rede estima ${(par.availableOutgoingBitrate / 1e6).toFixed(1)}` : '';
-    const relay = [par?.localCandidateId, par?.remoteCandidateId].some(id => st.find(s => s.id === id)?.candidateType === 'relay');
     const a = ultima.get(c) ?? o; ultima.set(c, o);
     const mbps = (o.bytesSent - a.bytesSent) * 8 / (o.timestamp - a.timestamp) / 1000 || 0;
-    const limite = { bandwidth: ' (rede no limite)', cpu: ' (CPU no limite)' }[o.qualityLimitationReason] ?? '';
-    partes.push(`${o.frameHeight ?? '?'}p ${Math.round(o.framesPerSecond ?? 0)} fps ${mbps.toFixed(1)} Mbps${limite}${rede}${relay ? ', via retransmissão' : ''}`);
+    const limite = { bandwidth: 'rede no limite', cpu: 'seu PC no limite' }[o.qualityLimitationReason];
+    selo.classList.add(limite ? 'alerta' : 'ok');
+    const num = x => x.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    selo.title = `${o.frameHeight ?? '?'}p · ${Math.round(o.framesPerSecond ?? 0)} fps · ${num(mbps)} Mbps — ${limite ?? 'boa'}`
+      + (par?.availableOutgoingBitrate ? ` (a rede até ele aguenta cerca de ${num(par.availableOutgoingBitrate / 1e6)} Mbps)` : '');
   }
-  $('envio').textContent = partes.join(' | ');
+  if (!selos.length) selos.push(Object.assign(document.createElement('span'), { className: 'selo', textContent: 'Ninguém assistindo ainda' }));
+  $('amigos').replaceChildren(...selos);
+  $('copiar').classList.toggle('principal', !chamadas.size);   // mandar o link é o próximo passo só enquanto a sala está vazia
 }
 
-async function compartilhar() {
-  try { stream = await capturar(); }
-  catch { return avisar('Compartilhamento cancelado.'); }
+// Captura (ou captura de novo) e passa a usar como fonte da sessão.
+async function trocarFonte() {
+  let nova;
+  try { nova = await capturar(); }
+  catch { avisar('Compartilhamento cancelado.'); return false; }
+  stream?.getTracks().forEach(t => { t.onended = null; t.stop(); });
+  stream = nova;
   const [video] = stream.getVideoTracks();
   video.contentHint = 'motion';               // filme: prioriza fluidez em vez de nitidez de texto
   video.onended = parar;                      // botão "parar de compartilhar" do navegador
-  avisar(stream.getAudioTracks().length ? '' : 'Sem áudio: pare e compartilhe de novo marcando a opção de áudio (só aparece para aba ou tela inteira).');
+  $('semaudio').hidden = stream.getAudioTracks().length > 0;
+  avisar('');
   tocar(new MediaStream([video]), { muted: true });   // prévia só com imagem: não tem como ela emitir som
+  [...chamadas].forEach(c => c.close());      // quem já assiste reconecta sozinho e recebe a fonte nova
+  return true;
+}
 
+async function compartilhar() {
+  if (!await trocarFonte()) return;
   peer = new Peer(crypto.randomUUID(), REDE); // o código da sala é a chave: longo e novo a cada sessão
   peer.on('open', id => {
-    $('link').value = location.href.split('#')[0] + '#' + id;
+    linkSala = location.href.split('#')[0] + '#' + id;
     $('barra').hidden = false;
+    medir();
   });
   peer.on('disconnected', () => peer.reconnect());   // sem isto, quem chega atrasado não entra
   setInterval(medir, 2000);
   peer.on('error', e => avisar('Erro de conexão: ' + e.type));
   peer.on('connection', conexao => {
     const chamada = peer.call(conexao.peer, stream, { sdpTransform: sdp => preferirCodec(estereo(sdp)) });
-    chamadas.add(chamada); contar();
-    const sair = () => { if (chamadas.delete(chamada)) { chamada.close(); contar(); } };
+    chamadas.add(chamada); medir();
+    const sair = () => { if (chamadas.delete(chamada)) { chamada.close(); medir(); } };
     conexao.on('close', sair);
     chamada.on('close', sair);
     const pc = chamada.peerConnection;
@@ -203,6 +246,7 @@ function assistir() {
     const mostrar = () => {
       if (!recebido || chamada.peerConnection?.connectionState !== 'connected') return;
       clearTimeout(prazo); conectou = true; falhas = 0; avisar(''); tocar(recebido, { controls: true });
+      document.body.classList.add('assistindo');
       // Filme não precisa de tempo real: um buffer maior dá tempo de repor pacotes perdidos antes de travar.
       chamada.peerConnection.getReceivers().forEach(r => { r.jitterBufferTarget = ATRASO_MS; });
     };
@@ -232,6 +276,7 @@ function fim() {
   falhas = 0;
   clearTimeout(espera); espera = 0;
   const p = peer; peer = null; p?.destroy();
+  document.body.classList.remove('assistindo');
   $('video').hidden = true;
   $('inicio').hidden = false;
   $('acao').disabled = false;
@@ -268,6 +313,13 @@ if (sala) {
   $('acao').textContent = 'Assistir';
   $('acao').onclick = () => { avisar('Conectando…'); assistir(); };
   addEventListener('pagehide', () => peer?.destroy());
+  $('cheia').onclick = async () => {
+    const v = $('video');
+    try {
+      await (v.requestFullscreen ? v.requestFullscreen() : v.webkitEnterFullscreen());   // iPhone só tem a segunda
+      await screen.orientation?.lock?.('landscape');                                      // abre deitado onde o navegador deixa
+    } catch { /* sem tela cheia ou sem trava de orientação: o vídeo segue como está */ }
+  };
   document.addEventListener('visibilitychange', () => {   // voltou para a aba: confere se a conexão sobreviveu
     const estado = chamadaAtual?.peerConnection?.connectionState;
     if (!document.hidden && peer && estado && estado !== 'connected' && estado !== 'connecting') reconectar();
@@ -276,10 +328,11 @@ if (sala) {
   $('dica').textContent = 'Escolha uma aba ou a tela inteira e marque a opção de compartilhar o áudio.';
   $('acao').textContent = 'Compartilhar tela';
   $('acao').onclick = compartilhar;
-  $('copiar').onclick = () => navigator.clipboard.writeText($('link').value).then(() => {
+  $('copiar').onclick = () => navigator.clipboard.writeText(linkSala).then(() => {
     $('copiar').textContent = 'Copiado';
     setTimeout(() => { $('copiar').textContent = 'Copiar link'; }, 1500);
-  });
+  }, () => prompt('Copie o link da sala:', linkSala));   // sem permissão de área de transferência
+  $('denovo').onclick = trocarFonte;
   $('qualidade').onchange = () => chamadas.forEach(limitar);
   // O codec é combinado na conexão: derruba as chamadas e os amigos reconectam sozinhos já com o novo.
   $('codec').onchange = () => [...chamadas].forEach(c => c.close());
