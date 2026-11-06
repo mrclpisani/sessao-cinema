@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 540" width="880" height="540" role="img" aria-label="Diagrama: quem compartilha abre uma sala no serviço PeerJS e manda o link ao amigo; o PeerJS apresenta os dois navegadores; quem compartilha envia um desafio, o amigo devolve assinado, a assinatura e a lista são conferidas e só então o filme é enviado.">
+  <style>
+    text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 14px; fill: #e8e6e1 }
+    .titulo { font-size: 15px; font-weight: 600 }
+    .sub { font-size: 12px; fill: #a3a19b }
+    .fraco { fill: #a3a19b }
+    .verde { fill: #8fe0a8; font-weight: 600 }
+  </style>
+  <defs>
+    <marker id="seta" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#e8e6e1"/></marker>
+    <marker id="seta-fraca" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#a3a19b"/></marker>
+    <marker id="seta-verde" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#8fe0a8"/></marker>
+  </defs>
+
+  <rect width="880" height="540" rx="12" fill="#0b0b0d"/>
+
+  <!-- linhas de cada participante -->
+  <line x1="150" y1="76" x2="150" y2="516" stroke="#3a3a40" stroke-width="2"/>
+  <line x1="440" y1="76" x2="440" y2="516" stroke="#3a3a40" stroke-width="2" stroke-dasharray="4 6"/>
+  <line x1="730" y1="76" x2="730" y2="516" stroke="#3a3a40" stroke-width="2"/>
+
+  <!-- participantes -->
+  <g text-anchor="middle">
+    <rect x="50" y="20" width="200" height="56" rx="8" fill="#17171a" stroke="#3a3a40"/>
+    <text x="150" y="44" class="titulo">Quem compartilha</text>
+    <text x="150" y="63" class="sub">tem o filme</text>
+    <rect x="340" y="20" width="200" height="56" rx="8" fill="#17171a" stroke="#3a3a40"/>
+    <text x="440" y="44" class="titulo">Serviço PeerJS</text>
+    <text x="440" y="63" class="sub">só apresenta os dois</text>
+    <rect x="630" y="20" width="200" height="56" rx="8" fill="#17171a" stroke="#3a3a40"/>
+    <text x="730" y="44" class="titulo">Amigo</text>
+    <text x="730" y="63" class="sub">assiste</text>
+  </g>
+
+  <g text-anchor="middle">
+    <!-- 1 -->
+    <text x="295" y="113">1. Abre uma sala com código sorteado</text>
+    <line x1="152" y1="122" x2="437" y2="122" stroke="#e8e6e1" stroke-width="1.5" marker-end="url(#seta)"/>
+
+    <!-- 2 -->
+    <rect x="255" y="146" width="370" height="20" fill="#0b0b0d"/>
+    <text x="440" y="161" class="fraco">2. Manda o link da sala por mensagem, fora do site</text>
+    <line x1="152" y1="170" x2="727" y2="170" stroke="#a3a19b" stroke-width="1.5" stroke-dasharray="6 5" marker-end="url(#seta-fraca)"/>
+
+    <!-- 3 -->
+    <text x="585" y="209">3. Abre o link e pede para entrar</text>
+    <line x1="728" y1="218" x2="443" y2="218" stroke="#e8e6e1" stroke-width="1.5" marker-end="url(#seta)"/>
+
+    <!-- 4 -->
+    <text x="295" y="257">4. Apresenta um ao outro</text>
+    <line x1="438" y1="266" x2="153" y2="266" stroke="#e8e6e1" stroke-width="1.5" marker-end="url(#seta)"/>
+
+    <!-- 5 -->
+    <rect x="320" y="306" width="240" height="20" fill="#0b0b0d"/>
+    <text x="440" y="321">5. Desafio: um número sorteado</text>
+    <line x1="152" y1="330" x2="727" y2="330" stroke="#e8e6e1" stroke-width="1.5" marker-end="url(#seta)"/>
+
+    <!-- 6 -->
+    <rect x="245" y="354" width="390" height="20" fill="#0b0b0d"/>
+    <text x="440" y="369">6. Devolve o desafio assinado com a chave do aparelho</text>
+    <line x1="728" y1="378" x2="153" y2="378" stroke="#e8e6e1" stroke-width="1.5" marker-end="url(#seta)"/>
+
+    <!-- 8 -->
+    <rect x="250" y="462" width="380" height="20" fill="#0b0b0d"/>
+    <text x="440" y="477" class="verde">8. Filme e som, só para quem passou na conferência</text>
+    <line x1="152" y1="488" x2="726" y2="488" stroke="#8fe0a8" stroke-width="3" marker-end="url(#seta-verde)"/>
+  </g>
+
+  <!-- 7 -->
+  <rect x="66" y="402" width="368" height="36" rx="8" fill="#17171a" stroke="#3a3a40"/>
+  <text x="82" y="425">7. Confere a assinatura e a lista de autorizados</text>
+</svg>
