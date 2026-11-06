@@ -22,6 +22,7 @@
   #acao:disabled { opacity: .5; cursor: default }
   #link { flex: 1; min-width: 160px; font-family: ui-monospace, monospace; font-size: 13px }
   #contador { background: #16301f; color: #8fe0a8; border-radius: 8px; padding: 7px 12px; white-space: nowrap }
+  #envio { color: #a3a19b; font-size: 13px }
   #parar { color: #ff8a80 }
 </style>
 
@@ -43,6 +44,7 @@
     </select>
   </label>
   <span id="contador" role="status">0 assistindo</span>
+  <span id="envio"></span>
   <button id="parar">Parar</button>
 </div>
 
@@ -54,8 +56,16 @@ const chamadas = new Set();
 let peer, stream;
 
 const avisar = texto => { $('aviso').textContent = texto; };
-// O Chrome só envia Opus em estéreo se o SDP pedir; sem isto o filme chega mono.
-const estereo = sdp => sdp.replace(/useinbandfec=1/g, 'useinbandfec=1;stereo=1;maxaveragebitrate=256000');
+// Medido neste PC em 1080p: VP9 fez 30 fps a 6 Mbps; VP8 ficou em 22 fps; H.264 (placa AMD) travou em 2 Mbps.
+const CODEC = 'VP9';
+function ajustarSdp(sdp) {
+  // O Chrome só envia Opus em estéreo se o SDP pedir; sem isto o filme chega mono.
+  sdp = sdp.replace(/useinbandfec=1/g, 'useinbandfec=1;stereo=1;maxaveragebitrate=256000');
+  // Põe o codec escolhido na frente do padrão (VP8).
+  const preferidos = [...sdp.matchAll(new RegExp(`a=rtpmap:(\\d+) ${CODEC}/`, 'g'))].map(m => m[1]);
+  return sdp.replace(/(m=video \S+ \S+) (.*)/, (_, inicio, tipos) =>
+    inicio + ' ' + [...preferidos, ...tipos.split(' ').filter(t => !preferidos.includes(t))].join(' '));
+}
 
 function tocar(s, opcoes) {
   const v = $('video');
@@ -92,10 +102,28 @@ function limitar(chamada) {
   const p = envio?.getParameters();
   if (!p?.encodings?.length) return;
   p.encodings[0].maxBitrate = $('qualidade').value * 1e6;
+  // Sem isto o navegador encolhe a imagem (até 270p) quando a taxa aperta; aqui ele derruba fps e mantém a nitidez.
+  p.degradationPreference = 'maintain-resolution';
   envio.setParameters(p).catch(() => {});
 }
 
 const contar = () => { $('contador').textContent = `${chamadas.size} assistindo`; };
+
+// Mostra o que realmente está saindo para cada amigo: resolução, fps, taxa e o que está limitando.
+const ultima = new WeakMap();
+async function medir() {
+  const partes = [];
+  for (const c of chamadas) {
+    if (!c.peerConnection) continue;
+    const o = [...(await c.peerConnection.getStats()).values()].find(s => s.type === 'outbound-rtp' && s.kind === 'video');
+    if (!o) continue;
+    const a = ultima.get(c) ?? o; ultima.set(c, o);
+    const mbps = (o.bytesSent - a.bytesSent) * 8 / (o.timestamp - a.timestamp) / 1000 || 0;
+    const limite = { bandwidth: ' (rede no limite)', cpu: ' (CPU no limite)' }[o.qualityLimitationReason] ?? '';
+    partes.push(`${o.frameHeight ?? '?'}p ${Math.round(o.framesPerSecond ?? 0)} fps ${mbps.toFixed(1)} Mbps${limite}`);
+  }
+  $('envio').textContent = partes.join(' · ');
+}
 
 async function compartilhar() {
   try { stream = await capturar(); }
@@ -112,9 +140,10 @@ async function compartilhar() {
     $('barra').hidden = false;
   });
   peer.on('disconnected', () => peer.reconnect());   // sem isto, quem chega atrasado não entra
+  setInterval(medir, 2000);
   peer.on('error', e => avisar('Erro de conexão: ' + e.type));
   peer.on('connection', conexao => {
-    const chamada = peer.call(conexao.peer, stream, { sdpTransform: estereo });
+    const chamada = peer.call(conexao.peer, stream, { sdpTransform: ajustarSdp });
     chamadas.add(chamada); contar();
     const sair = () => { if (chamadas.delete(chamada)) { chamada.close(); contar(); } };
     conexao.on('close', sair);
@@ -135,28 +164,42 @@ function parar() {
 
 // ---------- quem assiste ----------
 
+let chamadaAtual, espera;
+
 function assistir() {
   $('acao').disabled = true;
-  avisar('Conectando…');
-  peer = new Peer();
-  peer.on('open', () => peer.connect(sala).on('close', fim));
-  peer.on('call', chamada => {
-    chamada.answer(undefined, { sdpTransform: estereo });
-    chamada.on('stream', s => { avisar(''); tocar(s, { controls: true }); });
-    chamada.on('close', fim);
+  const antigo = peer, meu = peer = new Peer();
+  antigo?.destroy();
+  const cair = () => { if (meu === peer) reconectar(); };   // ignora eventos de uma conexão já substituída
+  const prazo = setTimeout(cair, 10000);                    // pedido perdido no caminho não gera erro: tenta de novo
+  meu.on('open', () => meu.connect(sala).on('close', cair));
+  meu.on('call', chamada => {
+    chamadaAtual = chamada;
+    chamada.answer(undefined, { sdpTransform: ajustarSdp });
+    chamada.on('stream', s => { clearTimeout(prazo); avisar(''); tocar(s, { controls: true }); });
+    chamada.on('close', cair);
   });
-  peer.on('error', e => {
-    avisar(e.type === 'peer-unavailable' ? 'Sala não encontrada. Peça um link novo.' : 'Erro de conexão: ' + e.type);
-    $('acao').disabled = false;
+  meu.on('error', e => {
+    if (meu !== peer) return;
+    if (e.type === 'peer-unavailable') fim();   // quem compartilha saiu, ou o link é antigo
+    else cair();
   });
 }
 
+// Celular em segundo plano, troca de rede ou queda momentânea: tenta de novo sozinho.
+function reconectar() {
+  if (espera) return;
+  avisar('Reconectando…');
+  espera = setTimeout(() => { espera = 0; assistir(); }, 2000);
+}
+
 function fim() {
-  peer?.destroy();
+  clearTimeout(espera); espera = 0;
+  const p = peer; peer = null; p?.destroy();
   $('video').hidden = true;
   $('inicio').hidden = false;
   $('acao').disabled = false;
-  avisar('A sessão terminou.');
+  avisar('A sessão terminou ou o link não vale mais.');
 }
 
 // ---------- início ----------
@@ -164,8 +207,12 @@ function fim() {
 if (sala) {
   $('dica').textContent = 'Você foi convidado para assistir.';
   $('acao').textContent = 'Assistir';
-  $('acao').onclick = assistir;
+  $('acao').onclick = () => { avisar('Conectando…'); assistir(); };
   addEventListener('pagehide', () => peer?.destroy());
+  document.addEventListener('visibilitychange', () => {   // voltou para a aba: confere se a conexão sobreviveu
+    const estado = chamadaAtual?.peerConnection?.connectionState;
+    if (!document.hidden && peer && estado && estado !== 'connected' && estado !== 'connecting') reconectar();
+  });
 } else {
   $('dica').textContent = 'Escolha uma aba ou a tela inteira e marque a opção de compartilhar o áudio.';
   $('acao').textContent = 'Compartilhar tela';
