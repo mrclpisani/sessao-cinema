@@ -157,8 +157,10 @@ async function carregarAparelho() {
 async function autorizados() {
   const r = await fetch('autorizados.json?' + Date.now(), { cache: 'no-store' });
   if (!r.ok) throw new Error('lista de autorizados indisponível');
-  const lista = await r.json();
-  return Array.isArray(lista) ? lista.filter(a => typeof a?.nome === 'string' && typeof a?.chave === 'string') : [];
+  // A lista é editada à mão, então a leitura pega cada par nome/chave direto do texto: uma vírgula
+  // faltando ou sobrando entre as linhas não derruba todo mundo, como aconteceria com JSON.parse.
+  return [...(await r.text()).matchAll(/"nome"\s*:\s*"([^"]+)"\s*,\s*"chave"\s*:\s*"([A-Za-z0-9_-]+)"/g)]
+    .map(([, nome, chave]) => ({ nome, chave }));
 }
 
 const assinar = async desafio => b64(await crypto.subtle.sign(ASSINATURA, aparelho.par.privateKey, paraAssinar(desafio, sala)));
