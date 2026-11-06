@@ -2,6 +2,10 @@
 <html lang="pt-BR">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Trava do navegador: só roda código deste site e só fala com o serviço que apresenta os PCs.
+     Limite conhecido: o script da página é embutido, por isso 'unsafe-inline'; para fechar isso,
+     mover o script para um arquivo próprio e tirar 'unsafe-inline' de script-src. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://0.peerjs.com wss://0.peerjs.com; media-src mediastream: blob:; base-uri 'none'; form-action 'none'">
 <title>Sessão de cinema</title>
 <style>
   * { box-sizing: border-box }
@@ -29,7 +33,7 @@
   .selo.ok::before, .selo.alerta::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor }
   .selo.ok { background: #16301f; color: #8fe0a8 }
   .selo.alerta { background: #3a2c0f; color: #ffcf70 }
-  #semaudio button { padding: 2px 8px; margin-left: 4px }
+  .selo button { padding: 2px 8px; margin-left: 4px }
   details { position: relative }
   summary { list-style: none; cursor: pointer; background: #232327; border: 1px solid #3a3a40; border-radius: 8px; padding: 7px 12px }
   summary::-webkit-details-marker { display: none }
@@ -62,6 +66,7 @@
   <button id="copiar" class="principal">Copiar link</button>
   <span id="amigos" aria-label="Quem está assistindo"></span>
   <span id="semaudio" class="selo alerta" hidden title="O som só vem ao compartilhar uma aba ou a tela inteira, com a opção de áudio marcada.">Sem áudio <button id="denovo">Compartilhar de novo</button></span>
+  <span id="telatoda" class="selo alerta" hidden title="Notificações, outras janelas e o que você digitar ficam visíveis para quem assiste. Para mostrar só o filme, compartilhe apenas a aba.">Tela inteira visível <button id="soaba">Trocar</button></span>
   <label>Qualidade
     <select id="qualidade">
       <option value="3">Econômica (3 Mbps)</option>
@@ -84,7 +89,8 @@
   <button id="parar">Parar</button>
 </div>
 
-<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<!-- PeerJS 1.5.5 (MIT), cópia do pacote do npm guardada aqui: nenhum código é carregado de outro site. -->
+<script src="peerjs.min.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const sala = location.hash.slice(1);          // com #código = espectador; sem = quem compartilha
@@ -152,6 +158,7 @@ function limitar(chamada) {
 // Um selo por amigo: verde quando vai bem, amarelo quando algo segura a qualidade. Os números reais
 // (resolução, fps, taxa, estimativa da rede) ficam na dica do selo.
 const ultima = new WeakMap();
+const MAX_AMIGOS = 8;
 let linkSala = '';
 async function medir() {
   const selos = [];
@@ -187,6 +194,7 @@ async function trocarFonte() {
   video.contentHint = 'motion';               // filme: prioriza fluidez em vez de nitidez de texto
   video.onended = parar;                      // botão "parar de compartilhar" do navegador
   $('semaudio').hidden = stream.getAudioTracks().length > 0;
+  $('telatoda').hidden = video.getSettings().displaySurface !== 'monitor';
   avisar('');
   tocar(new MediaStream([video]), { muted: true });   // prévia só com imagem: não tem como ela emitir som
   [...chamadas].forEach(c => c.close());      // quem já assiste reconecta sozinho e recebe a fonte nova
@@ -205,7 +213,9 @@ async function compartilhar() {
   setInterval(medir, 2000);
   peer.on('error', e => avisar('Erro de conexão: ' + e.type));
   peer.on('connection', conexao => {
-    const chamada = peer.call(conexao.peer, stream, { sdpTransform: sdp => preferirCodec(estereo(sdp)) });
+    // Cada espectador custa uma codificação de vídeo: sem teto, um link vazado travaria o PC de quem compartilha.
+    if (chamadas.size >= MAX_AMIGOS) return conexao.close();
+    const chamada =peer.call(conexao.peer, stream, { sdpTransform: sdp => preferirCodec(estereo(sdp)) });
     chamadas.add(chamada); medir();
     const sair = () => { if (chamadas.delete(chamada)) { chamada.close(); medir(); } };
     conexao.on('close', sair);
@@ -240,6 +250,7 @@ function assistir() {
   const prazo = setTimeout(cair, 20000);                    // pedido perdido no caminho não gera erro: tenta de novo
   meu.on('open', () => meu.connect(sala).on('close', cair));
   meu.on('call', chamada => {
+    if (chamada.peer !== sala) return chamada.close();   // só aceita vídeo de quem é dono da sala do link
     chamadaAtual = chamada;
     chamada.answer(undefined, { sdpTransform: estereo });
     // Só mostra o vídeo quando a conexão fecha de verdade; antes disso seria uma tela preta.
@@ -332,7 +343,7 @@ if (sala) {
     $('copiar').textContent = 'Copiado';
     setTimeout(() => { $('copiar').textContent = 'Copiar link'; }, 1500);
   }, () => prompt('Copie o link da sala:', linkSala));   // sem permissão de área de transferência
-  $('denovo').onclick = trocarFonte;
+  $('denovo').onclick = $('soaba').onclick = trocarFonte;
   $('qualidade').onchange = () => chamadas.forEach(limitar);
   // O codec é combinado na conexão: derruba as chamadas e os amigos reconectam sozinhos já com o novo.
   $('codec').onchange = () => [...chamadas].forEach(c => c.close());
