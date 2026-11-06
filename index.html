@@ -43,6 +43,12 @@
       <option value="10">10 Mbps</option>
     </select>
   </label>
+  <label>Codec
+    <select id="codec">
+      <option value="VP9" selected>VP9 (mais leve)</option>
+      <option value="AV1">AV1 (melhor imagem, mais CPU)</option>
+    </select>
+  </label>
   <span id="contador" role="status">0 assistindo</span>
   <span id="envio"></span>
   <button id="parar">Parar</button>
@@ -56,13 +62,13 @@ const chamadas = new Set();
 let peer, stream;
 
 const avisar = texto => { $('aviso').textContent = texto; };
-// Medido neste PC em 1080p: VP9 fez 30 fps a 6 Mbps; VP8 ficou em 22 fps; H.264 (placa AMD) travou em 2 Mbps.
-const CODEC = 'VP9';
-function ajustarSdp(sdp) {
-  // O Chrome só envia Opus em estéreo se o SDP pedir; sem isto o filme chega mono.
-  sdp = sdp.replace(/useinbandfec=1/g, 'useinbandfec=1;stereo=1;maxaveragebitrate=256000');
-  // Põe o codec escolhido na frente do padrão (VP8).
-  const preferidos = [...sdp.matchAll(new RegExp(`a=rtpmap:(\\d+) ${CODEC}/`, 'g'))].map(m => m[1]);
+// O Chrome só envia Opus em estéreo se o SDP pedir; sem isto o filme chega mono.
+const estereo = sdp => sdp.replace(/useinbandfec=1/g, 'useinbandfec=1;stereo=1;maxaveragebitrate=256000');
+// Só na oferta de quem compartilha: põe o codec escolhido na frente do padrão (VP8).
+// Medido neste PC em 1080p a 6 Mbps: VP9 30 fps (13 ms/quadro); AV1 30 fps (20 ms/quadro, comprime melhor);
+// VP8 ficou em 22 fps; H.264 (placa AMD) travou em 2 Mbps.
+function preferirCodec(sdp) {
+  const preferidos = [...sdp.matchAll(new RegExp(`a=rtpmap:(\\d+) ${$('codec').value}/`, 'g'))].map(m => m[1]);
   return sdp.replace(/(m=video \S+ \S+) (.*)/, (_, inicio, tipos) =>
     inicio + ' ' + [...preferidos, ...tipos.split(' ').filter(t => !preferidos.includes(t))].join(' '));
 }
@@ -116,14 +122,19 @@ async function medir() {
   const partes = [];
   for (const c of chamadas) {
     if (!c.peerConnection) continue;
-    const o = [...(await c.peerConnection.getStats()).values()].find(s => s.type === 'outbound-rtp' && s.kind === 'video');
+    const st = [...(await c.peerConnection.getStats()).values()];
+    const o = st.find(s => s.type === 'outbound-rtp' && s.kind === 'video');
     if (!o) continue;
+    // Quanto a rede acha que aguenta, e se o caminho passa por um servidor de retransmissão (mais lento).
+    const par = st.find(s => s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded');
+    const rede = par?.availableOutgoingBitrate ? `, rede estima ${(par.availableOutgoingBitrate / 1e6).toFixed(1)}` : '';
+    const relay = [par?.localCandidateId, par?.remoteCandidateId].some(id => st.find(s => s.id === id)?.candidateType === 'relay');
     const a = ultima.get(c) ?? o; ultima.set(c, o);
     const mbps = (o.bytesSent - a.bytesSent) * 8 / (o.timestamp - a.timestamp) / 1000 || 0;
     const limite = { bandwidth: ' (rede no limite)', cpu: ' (CPU no limite)' }[o.qualityLimitationReason] ?? '';
-    partes.push(`${o.frameHeight ?? '?'}p ${Math.round(o.framesPerSecond ?? 0)} fps ${mbps.toFixed(1)} Mbps${limite}`);
+    partes.push(`${o.frameHeight ?? '?'}p ${Math.round(o.framesPerSecond ?? 0)} fps ${mbps.toFixed(1)} Mbps${limite}${rede}${relay ? ', via retransmissão' : ''}`);
   }
-  $('envio').textContent = partes.join(' · ');
+  $('envio').textContent = partes.join(' | ');
 }
 
 async function compartilhar() {
@@ -144,7 +155,7 @@ async function compartilhar() {
   setInterval(medir, 2000);
   peer.on('error', e => avisar('Erro de conexão: ' + e.type));
   peer.on('connection', conexao => {
-    const chamada = peer.call(conexao.peer, stream, { sdpTransform: ajustarSdp });
+    const chamada = peer.call(conexao.peer, stream, { sdpTransform: sdp => preferirCodec(estereo(sdp)) });
     chamadas.add(chamada); contar();
     const sair = () => { if (chamadas.delete(chamada)) { chamada.close(); contar(); } };
     conexao.on('close', sair);
@@ -165,6 +176,9 @@ function parar() {
 
 // ---------- quem assiste ----------
 
+// Atraso de reprodução de quem assiste. Maior = mais resistente a oscilação de rede, porém mais
+// defasado de quem compartilha (reações na call chegam adiantadas). Faixa útil: 200 a 2000.
+const ATRASO_MS = 600;
 let chamadaAtual, espera;
 
 function assistir() {
@@ -176,8 +190,12 @@ function assistir() {
   meu.on('open', () => meu.connect(sala).on('close', cair));
   meu.on('call', chamada => {
     chamadaAtual = chamada;
-    chamada.answer(undefined, { sdpTransform: ajustarSdp });
-    chamada.on('stream', s => { clearTimeout(prazo); avisar(''); tocar(s, { controls: true }); });
+    chamada.answer(undefined, { sdpTransform: estereo });
+    chamada.on('stream', s => {
+      clearTimeout(prazo); avisar(''); tocar(s, { controls: true });
+      // Filme não precisa de tempo real: um buffer maior dá tempo de repor pacotes perdidos antes de travar.
+      chamada.peerConnection.getReceivers().forEach(r => { r.jitterBufferTarget = ATRASO_MS; });
+    });
     chamada.on('close', cair);
   });
   meu.on('error', e => {
@@ -223,6 +241,8 @@ if (sala) {
     setTimeout(() => { $('copiar').textContent = 'Copiar link'; }, 1500);
   });
   $('qualidade').onchange = () => chamadas.forEach(limitar);
+  // O codec é combinado na conexão: derruba as chamadas e os amigos reconectam sozinhos já com o novo.
+  $('codec').onchange = () => [...chamadas].forEach(c => c.close());
   $('parar').onclick = parar;
 }
 </script>
