@@ -84,6 +84,7 @@ function capturar() {
     // filtros de voz desligados: eles destroem música e efeitos de filme
     audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 },
     systemAudio: 'include',
+    windowAudio: 'window',   // Chrome recente: oferece o áudio do programa ao compartilhar uma janela
   });
 }
 
@@ -132,7 +133,7 @@ async function compartilhar() {
   video.contentHint = 'motion';               // filme: prioriza fluidez em vez de nitidez de texto
   video.onended = parar;                      // botão "parar de compartilhar" do navegador
   avisar(stream.getAudioTracks().length ? '' : 'Sem áudio: pare e compartilhe de novo marcando a opção de áudio (só aparece para aba ou tela inteira).');
-  tocar(stream, { muted: true });
+  tocar(new MediaStream([video]), { muted: true });   // prévia só com imagem: não tem como ela emitir som
 
   peer = new Peer(crypto.randomUUID());       // o código da sala é a chave: longo e novo a cada sessão
   peer.on('open', id => {
