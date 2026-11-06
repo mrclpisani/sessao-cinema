@@ -5,7 +5,7 @@
 <!-- Trava do navegador: só roda código deste site e só fala com o serviço que apresenta os PCs.
      Limite conhecido: o script da página é embutido, por isso 'unsafe-inline'; para fechar isso,
      mover o script para um arquivo próprio e tirar 'unsafe-inline' de script-src. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://0.peerjs.com wss://0.peerjs.com; media-src mediastream: blob:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com; media-src mediastream: blob:; base-uri 'none'; form-action 'none'">
 <title>Sessão de cinema</title>
 <style>
   * { box-sizing: border-box }
@@ -16,6 +16,8 @@
   #inicio { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; text-align: center }
   h1 { font-size: 22px; font-weight: 600; margin: 0 }
   #dica, #rede { color: #a3a19b; margin: 0; max-width: 34em }
+  #cadastro { display: flex; gap: 8px; width: min(100%, 34em) }
+  #codigo { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: 13px }
   #testar { background: none; border: 0; color: #a3a19b; font-size: 13px; text-decoration: underline }
   #aviso { color: #ffcf70; margin: 0; padding: 6px 12px; text-align: center }
   #aviso:empty { display: none }
@@ -54,8 +56,12 @@
 
 <div id="inicio">
   <h1>Sessão de cinema</h1>
-  <p id="dica"></p>
-  <button id="acao"></button>
+  <p id="dica">Conferindo este aparelho…</p>
+  <button id="acao" hidden></button>
+  <div id="cadastro" hidden>
+    <input id="codigo" readonly aria-label="Código deste aparelho">
+    <button id="copiarcodigo" class="principal">Copiar código</button>
+  </div>
   <button id="testar">Testar minha rede</button>
   <p id="rede" role="status"></p>
 </div>
@@ -121,6 +127,53 @@ function tocar(s, opcoes) {
   v.play().catch(e => { if (e.name === 'NotAllowedError') avisar('Clique no play para iniciar.'); });
 }
 
+// ---------- autorização por aparelho ----------
+
+// Cada navegador tem um par de chaves próprio, e a chave privada nunca sai dele. Só participa quem
+// tiver a chave pública listada em autorizados.json e provar, assinando um desafio, que é o dono dela.
+const ALG = { name: 'ECDSA', namedCurve: 'P-256' }, ASSINATURA = { name: 'ECDSA', hash: 'SHA-256' };
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const deB64 = txt => Uint8Array.from(atob(txt.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+// O que é assinado: o desafio sorteado por quem compartilha mais o código da sala, para a resposta não servir em outra sala.
+const paraAssinar = (desafio, salaId) => new TextEncoder().encode(desafio + '|' + salaId);
+let aparelho;   // { par, chave }: as chaves deste navegador e a pública em texto
+
+async function carregarAparelho() {
+  const db = await new Promise((ok, erro) => {
+    const r = indexedDB.open('sessao-cinema', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('chaves');
+    r.onsuccess = () => ok(r.result); r.onerror = () => erro(r.error);
+  });
+  const novo = await crypto.subtle.generateKey(ALG, false, ['sign', 'verify']);   // privada não exportável
+  const par = await new Promise((ok, erro) => {   // usa a chave já guardada; só grava a nova se não houver nenhuma
+    const t = db.transaction('chaves', 'readwrite'), loja = t.objectStore('chaves'), r = loja.get('aparelho');
+    let escolhido;
+    r.onsuccess = () => { escolhido = r.result ?? novo; if (!r.result) loja.put(novo, 'aparelho'); };
+    t.oncomplete = () => ok(escolhido); t.onerror = () => erro(t.error);
+  });
+  return { par, chave: b64(await crypto.subtle.exportKey('raw', par.publicKey)) };
+}
+
+async function autorizados() {
+  const r = await fetch('autorizados.json?' + Date.now(), { cache: 'no-store' });
+  if (!r.ok) throw new Error('lista de autorizados indisponível');
+  const lista = await r.json();
+  return Array.isArray(lista) ? lista.filter(a => typeof a?.nome === 'string' && typeof a?.chave === 'string') : [];
+}
+
+const assinar = async desafio => b64(await crypto.subtle.sign(ASSINATURA, aparelho.par.privateKey, paraAssinar(desafio, sala)));
+
+// Devolve o nome cadastrado se a resposta vier de um aparelho autorizado; senão, null.
+async function conferir(resposta, desafio, salaId) {
+  if (typeof resposta?.chave !== 'string' || typeof resposta?.assinatura !== 'string'
+    || resposta.chave.length > 200 || resposta.assinatura.length > 200) return null;
+  const registro = (await autorizados()).find(a => a.chave === resposta.chave);   // lista lida na hora: vale quem foi incluído há pouco
+  if (!registro) return null;
+  const publica = await crypto.subtle.importKey('raw', deB64(resposta.chave), ALG, false, ['verify']);
+  const valida = await crypto.subtle.verify(ASSINATURA, publica, deB64(resposta.assinatura), paraAssinar(desafio, salaId));
+  return valida ? registro.nome.slice(0, 30) : null;
+}
+
 // ---------- quem compartilha ----------
 
 function capturar() {
@@ -163,7 +216,7 @@ let linkSala = '';
 async function medir() {
   const selos = [];
   for (const c of chamadas) {
-    const selo = Object.assign(document.createElement('span'), { className: 'selo', textContent: `Amigo ${selos.length + 1}`, title: 'Conectando…' });
+    const selo = Object.assign(document.createElement('span'), { className: 'selo', textContent: c.nome, title: 'Conectando…' });
     selos.push(selo);
     if (c.peerConnection?.connectionState !== 'connected') continue;
     const st = [...(await c.peerConnection.getStats()).values()];
@@ -215,15 +268,30 @@ async function compartilhar() {
   peer.on('connection', conexao => {
     // Cada espectador custa uma codificação de vídeo: sem teto, um link vazado travaria o PC de quem compartilha.
     if (chamadas.size >= MAX_AMIGOS) return conexao.close();
-    const chamada =peer.call(conexao.peer, stream, { sdpTransform: sdp => preferirCodec(estereo(sdp)) });
-    chamadas.add(chamada); medir();
-    const sair = () => { if (chamadas.delete(chamada)) { chamada.close(); medir(); } };
-    conexao.on('close', sair);
-    chamada.on('close', sair);
-    const pc = chamada.peerConnection;
-    pc.addEventListener('connectionstatechange', () => {
-      if (pc.connectionState === 'connected') limitar(chamada);
-      else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') sair();
+    // O vídeo só é enviado depois que o aparelho prova, assinando este desafio, que está na lista.
+    const desafio = b64(crypto.getRandomValues(new Uint8Array(32)));
+    const prazo = setTimeout(() => conexao.close(), 15000);   // não respondeu ao desafio
+    let respondeu = false;
+    conexao.on('open', () => conexao.send({ desafio }));
+    conexao.on('data', async resposta => {
+      if (respondeu) return;                                  // um desafio, uma resposta
+      respondeu = true; clearTimeout(prazo);
+      const nome = await conferir(resposta, desafio, peer.id).catch(() => null);
+      if (!conexao.open) return;
+      if (!nome || chamadas.size >= MAX_AMIGOS) {
+        conexao.send({ recusado: true });
+        return setTimeout(() => conexao.close(), 500);        // dá tempo de o aviso chegar
+      }
+      const chamada = Object.assign(peer.call(conexao.peer, stream, { sdpTransform: sdp => preferirCodec(estereo(sdp)) }), { nome });
+      chamadas.add(chamada); medir();
+      const sair = () => { if (chamadas.delete(chamada)) { chamada.close(); medir(); } };
+      conexao.on('close', sair);
+      chamada.on('close', sair);
+      const pc = chamada.peerConnection;
+      pc.addEventListener('connectionstatechange', () => {
+        if (pc.connectionState === 'connected') limitar(chamada);
+        else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') sair();
+      });
     });
   });
 }
@@ -248,7 +316,16 @@ function assistir() {
   let conectou = false, recebido;
   const cair = () => { if (meu === peer) reconectar(!conectou); };   // ignora eventos de uma conexão já substituída
   const prazo = setTimeout(cair, 20000);                    // pedido perdido no caminho não gera erro: tenta de novo
-  meu.on('open', () => meu.connect(sala).on('close', cair));
+  meu.on('open', () => {
+    const conexao = meu.connect(sala);
+    conexao.on('close', cair);
+    conexao.on('data', async d => {
+      if (meu !== peer) return;
+      if (d?.recusado) return fim('Este aparelho não está autorizado nesta sala.');
+      // Responde ao desafio de quem compartilha com a assinatura deste aparelho.
+      if (typeof d?.desafio === 'string' && d.desafio.length <= 100) conexao.send({ chave: aparelho.chave, assinatura: await assinar(d.desafio) });
+    });
+  });
   meu.on('call', chamada => {
     if (chamada.peer !== sala) return chamada.close();   // só aceita vídeo de quem é dono da sala do link
     chamadaAtual = chamada;
@@ -283,7 +360,7 @@ function reconectar(semConectar) {
   espera = setTimeout(() => { espera = 0; assistir(); }, 2000);
 }
 
-function fim() {
+function fim(texto = 'A sessão terminou ou o link não vale mais.') {
   falhas = 0;
   clearTimeout(espera); espera = 0;
   const p = peer; peer = null; p?.destroy();
@@ -291,7 +368,7 @@ function fim() {
   $('video').hidden = true;
   $('inicio').hidden = false;
   $('acao').disabled = false;
-  avisar('A sessão terminou ou o link não vale mais.');
+  avisar(texto);
 }
 
 // ---------- diagnóstico de rede ----------
@@ -319,6 +396,31 @@ $('testar').onclick = () => testarRede().catch(() => { $('rede').textContent = '
 
 // ---------- início ----------
 
+// Antes de qualquer coisa, confere se este aparelho está na lista. Na dúvida (lista fora do ar), não libera.
+async function iniciar() {
+  let registro;
+  try {
+    aparelho = await carregarAparelho();
+    registro = (await autorizados()).find(a => a.chave === aparelho.chave);
+  } catch {
+    $('dica').textContent = 'Não foi possível conferir a autorização deste aparelho. Recarregue a página.';
+    return;
+  }
+  if (!registro) {
+    $('dica').textContent = 'Este aparelho ainda não foi autorizado. Envie o código abaixo para quem administra esta página e recarregue depois de liberado.';
+    $('codigo').value = aparelho.chave;
+    $('cadastro').hidden = false;
+    $('copiarcodigo').onclick = () => navigator.clipboard.writeText(aparelho.chave).then(
+      () => { $('copiarcodigo').textContent = 'Copiado'; },
+      () => $('codigo').select());   // sem permissão de área de transferência: deixa selecionado para copiar à mão
+    return;
+  }
+  $('acao').hidden = false;
+  prepararPapel();
+}
+iniciar();
+
+function prepararPapel() {
 if (sala) {
   $('dica').textContent = 'Você foi convidado para assistir.';
   $('acao').textContent = 'Assistir';
@@ -348,6 +450,7 @@ if (sala) {
   // O codec é combinado na conexão: derruba as chamadas e os amigos reconectam sozinhos já com o novo.
   $('codec').onchange = () => [...chamadas].forEach(c => c.close());
   $('parar').onclick = parar;
+}
 }
 </script>
 </html>
