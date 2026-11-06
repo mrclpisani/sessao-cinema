@@ -69,7 +69,7 @@ No celular em pé, o filme ocupa uma faixa e aparece um botão grande de **Tela 
 
 <img src="docs/6-celular.jpg" alt="Filme sendo assistido no celular em pé, com o botão Tela cheia" width="300">
 
-> As imagens são de uma sessão de verdade, com uma aba compartilhando e outra assistindo no mesmo computador; a do celular é o navegador no tamanho de tela de um celular. O filme é *Sintel*, © Blender Foundation ([durian.blender.org](https://durian.blender.org)), de licença livre (CC BY 3.0).
+> As imagens são de uma sessão de verdade, com uma aba compartilhando e outra assistindo no mesmo computador; a do celular é o navegador no tamanho de tela de um celular. O filme é *Sintel*, © copyright Blender Foundation | [durian.blender.org](https://durian.blender.org), usado sob a licença [Creative Commons Atribuição 3.0](https://creativecommons.org/licenses/by/3.0/).
 
 ## Como funciona
 
@@ -105,7 +105,7 @@ Este é um projeto pessoal, feito para um grupo pequeno de amigos, e não passou
 **Internet e direitos**
 
 - **Consumo de dados.** Na qualidade Boa são até cerca de 2,7 GB por hora para cada pessoa que assiste (1,35 GB na Econômica e 4,5 GB na Máxima). Quem compartilha envia essa quantidade para cada amigo. Em internet móvel isso consome a franquia rápido.
-- **Direitos autorais.** Exibir um filme para outras pessoas pode contrariar os termos do serviço de onde ele vem ou a lei de direitos autorais. A responsabilidade é de quem compartilha.
+- **Direitos autorais.** A lei brasileira (Lei 9.610/1998, art. 29) exige autorização do titular para exibir a outras pessoas um filme protegido, e isso também pode contrariar os termos do serviço de onde o filme vem. Não há esse risco com filmes de licença livre ou em domínio público e com vídeos seus. A responsabilidade pelo que é transmitido é de quem compartilha.
 
 ## Limites conhecidos
 
