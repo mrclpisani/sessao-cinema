@@ -64,6 +64,10 @@ const sala = location.hash.slice(1);          // com #código = espectador; sem 
 const chamadas = new Set();
 let peer, stream;
 
+// Servidores que só informam o endereço público de cada um. Os retransmissores padrão do PeerJS
+// saíram do ar (o nome nem resolve), então ficam de fora: sem eles não há erro nem espera à toa.
+const REDE = { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }] } };
+
 const avisar = texto => { $('aviso').textContent = texto; };
 // O Chrome só envia Opus em estéreo se o SDP pedir; sem isto o filme chega mono.
 const estereo = sdp => sdp.replace(/useinbandfec=1/g, 'useinbandfec=1;stereo=1;maxaveragebitrate=256000');
@@ -149,7 +153,7 @@ async function compartilhar() {
   avisar(stream.getAudioTracks().length ? '' : 'Sem áudio: pare e compartilhe de novo marcando a opção de áudio (só aparece para aba ou tela inteira).');
   tocar(new MediaStream([video]), { muted: true });   // prévia só com imagem: não tem como ela emitir som
 
-  peer = new Peer(crypto.randomUUID());       // o código da sala é a chave: longo e novo a cada sessão
+  peer = new Peer(crypto.randomUUID(), REDE); // o código da sala é a chave: longo e novo a cada sessão
   peer.on('open', id => {
     $('link').value = location.href.split('#')[0] + '#' + id;
     $('barra').hidden = false;
@@ -182,22 +186,29 @@ function parar() {
 // Atraso de reprodução de quem assiste. Maior = mais resistente a oscilação de rede, porém mais
 // defasado de quem compartilha (reações na call chegam adiantadas). Faixa útil: 200 a 2000.
 const ATRASO_MS = 600;
-let chamadaAtual, espera;
+let chamadaAtual, espera, falhas = 0;
 
 function assistir() {
   $('acao').disabled = true;
-  const antigo = peer, meu = peer = new Peer();
+  const antigo = peer, meu = peer = new Peer(REDE);
   antigo?.destroy();
-  const cair = () => { if (meu === peer) reconectar(); };   // ignora eventos de uma conexão já substituída
-  const prazo = setTimeout(cair, 10000);                    // pedido perdido no caminho não gera erro: tenta de novo
+  let conectou = false, recebido;
+  const cair = () => { if (meu === peer) reconectar(!conectou); };   // ignora eventos de uma conexão já substituída
+  const prazo = setTimeout(cair, 20000);                    // pedido perdido no caminho não gera erro: tenta de novo
   meu.on('open', () => meu.connect(sala).on('close', cair));
   meu.on('call', chamada => {
     chamadaAtual = chamada;
     chamada.answer(undefined, { sdpTransform: estereo });
-    chamada.on('stream', s => {
-      clearTimeout(prazo); avisar(''); tocar(s, { controls: true });
+    // Só mostra o vídeo quando a conexão fecha de verdade; antes disso seria uma tela preta.
+    const mostrar = () => {
+      if (!recebido || chamada.peerConnection?.connectionState !== 'connected') return;
+      clearTimeout(prazo); conectou = true; falhas = 0; avisar(''); tocar(recebido, { controls: true });
       // Filme não precisa de tempo real: um buffer maior dá tempo de repor pacotes perdidos antes de travar.
       chamada.peerConnection.getReceivers().forEach(r => { r.jitterBufferTarget = ATRASO_MS; });
+    };
+    chamada.on('stream', s => {
+      if (!recebido) chamada.peerConnection.addEventListener('connectionstatechange', mostrar);
+      recebido = s; mostrar();
     });
     chamada.on('close', cair);
   });
@@ -209,13 +220,16 @@ function assistir() {
 }
 
 // Celular em segundo plano, troca de rede ou queda momentânea: tenta de novo sozinho.
-function reconectar() {
+function reconectar(semConectar) {
   if (espera) return;
-  avisar('Reconectando…');
+  if (semConectar) falhas++;
+  avisar(falhas < 2 ? 'Reconectando…'
+    : 'Não foi possível conectar direto com quem compartilha: as duas redes não se alcançam. Usem "Testar minha rede" nos dois lados. Tentando de novo…');
   espera = setTimeout(() => { espera = 0; assistir(); }, 2000);
 }
 
 function fim() {
+  falhas = 0;
   clearTimeout(espera); espera = 0;
   const p = peer; peer = null; p?.destroy();
   $('video').hidden = true;
@@ -230,7 +244,7 @@ function fim() {
 // tipo que impede conexão direta (comum em 4G, CGNAT e VPN). IPv6 público contorna o NAT.
 async function testarRede() {
   $('rede').textContent = 'Testando a rede…';
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }] });
+  const pc = new RTCPeerConnection(REDE.config);
   const candidatos = [];
   pc.onicecandidate = e => { if (e.candidate) candidatos.push(e.candidate); };
   pc.createDataChannel('teste');
