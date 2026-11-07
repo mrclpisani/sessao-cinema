@@ -39,6 +39,8 @@ Quem administra acrescenta uma linha no arquivo [autorizados.json](autorizados.j
 
 Cerca de um minuto depois de salvar, a pessoa recarrega a página e já está liberada. O código vale para aquele navegador naquele aparelho. Outro navegador ou outro celular precisa de um código novo.
 
+Quem quiser pode instalar a página como aplicativo: no Chrome e no Edge, pelo ícone de instalar na barra de endereço (no celular, "Adicionar à tela inicial"). Ela ganha um ícone próprio e abre em janela separada, sem mudar nada no funcionamento.
+
 ### 2. Compartilhar a tela
 
 No computador de quem tem o filme, a página mostra o botão **Compartilhar tela**. O navegador pergunta o que mostrar: escolha a aba do filme (ou a tela inteira) e marque a opção de compartilhar o áudio.
@@ -121,6 +123,7 @@ Este é um projeto pessoal, feito para um grupo pequeno de amigos, e não passou
 | [autorizados.json](autorizados.json) | Lista dos aparelhos que podem participar. |
 | [peerjs.min.js](peerjs.min.js) | Biblioteca PeerJS 1.5.5, que conecta os navegadores. |
 | [peerjs.LICENSE.txt](peerjs.LICENSE.txt) | Licença da PeerJS (MIT), que precisa acompanhar a cópia da biblioteca. |
+| [manifest.webmanifest](manifest.webmanifest), `icone.svg`, `icone-192.png`, `icone-512.png` | Nome e ícone da página para quem a instala como aplicativo. |
 | [LICENSE](LICENSE) | Licença deste projeto (MIT). |
 | `README.md` e `docs/` | Esta explicação e as imagens dela. |
 

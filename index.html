@@ -5,8 +5,12 @@
 <!-- Trava do navegador: só roda código deste site e só fala com o serviço que apresenta os PCs.
      Limite conhecido: o script da página é embutido, por isso 'unsafe-inline'; para fechar isso,
      mover o script para um arquivo próprio e tirar 'unsafe-inline' de script-src. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com; media-src mediastream: blob:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com; media-src mediastream: blob:; base-uri 'none'; form-action 'none'">
 <title>Sessão de cinema</title>
+<link rel="icon" href="icone.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icone-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0b0d">
 <style>
   * { box-sizing: border-box }
   html, body { height: 100%; margin: 0 }
