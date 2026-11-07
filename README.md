@@ -93,7 +93,7 @@ Este é um projeto pessoal, feito para um grupo pequeno de amigos, e não passou
 
 **Acesso**
 
-- **Quem usa o seu navegador entra como você.** A chave fica guardada no navegador autorizado. Outra pessoa (ou um programa malicioso) com acesso a esse navegador participa em seu nome. Para cortar um aparelho, apague a linha dele em `autorizados.json`; a mudança vale a partir da conexão seguinte.
+- **Quem usa o seu navegador entra como você.** A chave fica guardada no navegador autorizado. Outra pessoa (ou um programa malicioso) com acesso a esse navegador participa em seu nome. Para cortar um aparelho, apague a linha dele em `autorizados.json`; a mudança vale na conexão seguinte e, para quem já está assistindo, em até meio minuto.
 - **Quem controla o repositório controla a página.** Quem conseguir editar este repositório pode mudar a lista de autorizados e o próprio código. Proteja a conta do GitHub com verificação em duas etapas.
 - **Limpar os dados do navegador apaga a chave.** O aparelho passa a ter um código novo e precisa ser autorizado de novo.
 
@@ -111,7 +111,7 @@ Este é um projeto pessoal, feito para um grupo pequeno de amigos, e não passou
 
 - **Algumas redes não conectam.** A conexão é direta, sem servidor retransmissor (que custa dinheiro). Internet móvel (4G/5G), algumas operadoras e VPNs podem impedir a conexão. O botão "Testar minha rede" mostra se é o caso.
 - **Mais amigos exigem mais do computador de quem compartilha.** O vídeo é compactado uma vez para cada espectador. Por isso o limite de 8.
-- **Compartilhar precisa de um computador.** Assistir funciona também no celular. A página foi feita e testada no Chrome.
+- **Compartilhar precisa de um computador.** Assistir funciona também no celular. A página foi feita e testada no Chrome e no Edge; as facilidades do seletor de tela (abrir na lista de abas e trocar de aba sem compartilhar de novo) são desses navegadores, e os outros as ignoram.
 
 ## Arquivos
 

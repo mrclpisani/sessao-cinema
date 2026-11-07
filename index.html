@@ -108,6 +108,9 @@ let peer, stream;
 const REDE = { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }] } };
 
 const avisar = texto => { $('aviso').textContent = texto; };
+// Espera entre tentativas de reconexão: volta rápido de uma queda passageira e não fica insistindo a
+// cada instante no serviço público quando o outro lado demora a voltar.
+const esperaDe = tentativas => Math.min(8000, 1000 * 2 ** tentativas);
 // O Chrome só envia Opus em estéreo se o SDP pedir; sem isto o filme chega mono.
 const estereo = sdp => sdp.replace(/useinbandfec=1/g, 'useinbandfec=1;stereo=1;maxaveragebitrate=256000');
 // Só na oferta de quem compartilha: põe o codec escolhido na frente do padrão (VP8).
@@ -181,11 +184,14 @@ async function conferir(resposta, desafio, salaId) {
 function capturar() {
   if (new URLSearchParams(location.search).has('teste')) return streamDeTeste();
   return navigator.mediaDevices.getDisplayMedia({
-    video: { frameRate: 30, width: { max: 1920 }, height: { max: 1080 } },
+    // displaySurface: o seletor já abre na lista de abas, que é a opção que traz o som e não mostra o resto da tela
+    video: { frameRate: 30, width: { max: 1920 }, height: { max: 1080 }, displaySurface: 'browser' },
     // filtros de voz desligados: eles destroem música e efeitos de filme
     audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 },
     systemAudio: 'include',
     windowAudio: 'window',   // Chrome recente: oferece o áudio do programa ao compartilhar uma janela
+    selfBrowserSurface: 'exclude',   // não oferece a própria aba da sessão
+    surfaceSwitching: 'include',     // Chrome: botão para trocar de aba sem compartilhar de novo
   });
 }
 
@@ -200,8 +206,12 @@ function streamDeTeste() {
   return new MediaStream([...c.captureStream(30).getTracks(), ...(mudo ? [] : destino.stream.getTracks())]);
 }
 
+// Quem envia a faixa de um tipo nesta conexão. Achado pelo transceptor, não pela faixa: o envio de som
+// continua existindo quando está sem faixa (fonte trocada por uma sem som).
+const emissor = (chamada, tipo) => chamada.peerConnection?.getTransceivers().find(t => t.receiver.track.kind === tipo)?.sender;
+
 function limitar(chamada) {
-  const envio = chamada.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+  const envio = emissor(chamada, 'video');
   const p = envio?.getParameters();
   if (!p?.encodings?.length) return;
   p.encodings[0].maxBitrate = $('qualidade').value * 1e6;
@@ -243,29 +253,45 @@ async function trocarFonte() {
   let nova;
   try { nova = await capturar(); }
   catch { avisar('Compartilhamento cancelado.'); return false; }
-  stream?.getTracks().forEach(t => { t.onended = null; t.stop(); });
+  const antiga = stream;
   stream = nova;
-  const [video] = stream.getVideoTracks();
+  const [video] = stream.getVideoTracks(), [audio] = stream.getAudioTracks();
   video.contentHint = 'motion';               // filme: prioriza fluidez em vez de nitidez de texto
   video.onended = parar;                      // botão "parar de compartilhar" do navegador
-  $('semaudio').hidden = stream.getAudioTracks().length > 0;
+  $('semaudio').hidden = !!audio;
   $('telatoda').hidden = video.getSettings().displaySurface !== 'monitor';
   avisar('');
   tocar(new MediaStream([video]), { muted: true });   // prévia só com imagem: não tem como ela emitir som
-  [...chamadas].forEach(c => c.close());      // quem já assiste reconecta sozinho e recebe a fonte nova
+  // Troca as faixas nas conexões já abertas, e quem assiste continua sem reconectar.
+  // ponytail: quem entrou quando a fonte não tinha som não tem por onde receber o som novo; o PeerJS não
+  // renegocia a conexão, então esse (e quem falhar na troca) é desconectado e reconecta sozinho.
+  for (const c of [...chamadas]) {
+    const deVideo = emissor(c, 'video'), deAudio = emissor(c, 'audio');
+    if (!deVideo || (audio && !deAudio)) { c.close(); continue; }
+    Promise.all([deVideo.replaceTrack(video), deAudio?.replaceTrack(audio ?? null)]).catch(() => c.close());
+  }
+  antiga?.getTracks().forEach(t => { t.onended = null; t.stop(); });
   return true;
 }
 
 async function compartilhar() {
   if (!await trocarFonte()) return;
   peer = new Peer(crypto.randomUUID(), REDE); // o código da sala é a chave: longo e novo a cada sessão
+  let quedas = 0;   // quedas seguidas da ligação com o serviço que apresenta os navegadores
   peer.on('open', id => {
+    avisar('');   // depois de uma queda, o aviso de erro não vale mais
+    quedas = 0;
     linkSala = location.href.split('#')[0] + '#' + id;
     $('barra').hidden = false;
     medir();
   });
-  peer.on('disconnected', () => peer.reconnect());   // sem isto, quem chega atrasado não entra
+  // Sem religar, quem chega atrasado não entra. A espera cresce a cada tentativa: religar na hora,
+  // com o serviço fora do ar, vira um laço de centenas de tentativas por segundo.
+  peer.on('disconnected', () => setTimeout(() => { if (!peer.destroyed && peer.disconnected) peer.reconnect(); }, esperaDe(quedas++)));
   setInterval(medir, 2000);
+  // A lista é conferida de novo a cada meio minuto: quem saiu de autorizados.json é desconectado e, ao
+  // tentar voltar, recusado. Se a lista não puder ser lida na hora, quem já foi conferido ao entrar continua.
+  setInterval(() => autorizados().then(lista => [...chamadas].forEach(c => lista.some(a => a.chave === c.chave) || c.close()), () => {}), 30000);
   peer.on('error', e => avisar('Erro de conexão: ' + e.type));
   peer.on('connection', conexao => {
     // Cada espectador custa uma codificação de vídeo: sem teto, um link vazado travaria o PC de quem compartilha.
@@ -284,7 +310,7 @@ async function compartilhar() {
         conexao.send({ recusado: true });
         return setTimeout(() => conexao.close(), 500);        // dá tempo de o aviso chegar
       }
-      const chamada = Object.assign(peer.call(conexao.peer, stream, { sdpTransform: sdp => preferirCodec(estereo(sdp)) }), { nome });
+      const chamada = Object.assign(peer.call(conexao.peer, stream, { sdpTransform: sdp => preferirCodec(estereo(sdp)) }), { nome, chave: resposta.chave });
       chamadas.add(chamada); medir();
       const sair = () => { if (chamadas.delete(chamada)) { chamada.close(); medir(); } };
       conexao.on('close', sair);
@@ -359,7 +385,7 @@ function reconectar(semConectar) {
   if (semConectar) falhas++;
   avisar(falhas < 2 ? 'Reconectando…'
     : 'Não foi possível conectar direto com quem compartilha: as duas redes não se alcançam. Usem "Testar minha rede" nos dois lados. Tentando de novo…');
-  espera = setTimeout(() => { espera = 0; assistir(); }, 2000);
+  espera = setTimeout(() => { espera = 0; assistir(); }, esperaDe(falhas));
 }
 
 function fim(texto = 'A sessão terminou ou o link não vale mais.') {
