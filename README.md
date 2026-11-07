@@ -45,6 +45,8 @@ Quem quiser pode instalar a página como aplicativo: no Chrome e no Edge, pelo �
 
 No computador de quem tem o filme, a página mostra o botão **Compartilhar tela**. O navegador pergunta o que mostrar: escolha a aba do filme (ou a tela inteira) e marque a opção de compartilhar o áudio.
 
+Se o filme está em um programa, e não numa aba, compartilhe a **janela** dele: o som vai só daquele programa. A **tela inteira** leva o som de todos os programas, inclusive a chamada do Discord. Nesse caso, use o botão **Som de um programa só** que aparece na barra e escolha a janela do filme: a imagem continua sendo a tela inteira e o som passa a vir só dali (Chrome ou Edge 141 ou mais novo, no Windows 11).
+
 O link **Testar minha rede** diz se a internet daquele aparelho aceita conexão direta. Vale usar antes da primeira sessão.
 
 ![Tela inicial de um aparelho autorizado, com o botão Compartilhar tela e o resultado do teste de rede](docs/2-inicio.png)
@@ -59,7 +61,7 @@ Com o compartilhamento ligado, aparece uma barra embaixo do filme (é a primeira
 - **Avançado** troca a forma de compactar o vídeo: VP9 (mais leve para o computador) ou AV1 (imagem melhor, exige mais do computador).
 - **Parar** encerra a sessão para todo mundo.
 
-A barra também avisa quando o filme está indo sem som e quando a tela inteira está visível (notificações e outras janelas aparecem para quem assiste).
+A barra também avisa quando o filme está indo sem som e quando a tela inteira está visível (notificações e outras janelas aparecem para quem assiste, e o som de todos os programas vai junto; o botão **Som de um programa só** limita o som à janela do filme).
 
 ### 4. Assistir
 
@@ -90,7 +92,7 @@ Este é um projeto pessoal, feito para um grupo pequeno de amigos, e não passou
 
 - **O endereço IP aparece para o outro lado.** Como a conexão é direta, quem compartilha vê o IP de cada amigo e cada amigo vê o IP de quem compartilha. Um amigo não vê o IP do outro. O IP revela a operadora e a região aproximada.
 - **Um link vazado não mostra o filme, mas expõe o IP de quem compartilha.** A conferência do aparelho acontece depois que os dois navegadores se conectam. Um estranho com o link não recebe imagem nem som, mas consegue descobrir o IP de quem compartilha enquanto a sessão estiver aberta. Mande o link só para os amigos; ele deixa de valer quando a sessão termina.
-- **Compartilhar a tela inteira mostra tudo:** notificações, mensagens e outras janelas. A página avisa quando isso acontece. Prefira compartilhar só a aba do filme.
+- **Compartilhar a tela inteira mostra tudo:** notificações, mensagens e outras janelas, e o som de todos os programas vai junto, inclusive o de uma chamada do Discord. A página avisa quando isso acontece. Prefira compartilhar só a aba ou a janela do filme, ou use **Som de um programa só**.
 - **Os nomes da lista são públicos.** O arquivo `autorizados.json` pode ser lido por qualquer pessoa na internet, com o nome escrito em cada linha. Use um apelido se não quiser o nome exposto. Os códigos da lista não são segredo: sozinhos, sem o aparelho, não servem para entrar.
 
 **Acesso**

@@ -76,7 +76,7 @@
   <button id="copiar" class="principal">Copiar link</button>
   <span id="amigos" aria-label="Quem está assistindo"></span>
   <span id="semaudio" class="selo alerta" hidden title="O som só vem ao compartilhar uma aba ou a tela inteira, com a opção de áudio marcada.">Sem áudio <button id="denovo">Compartilhar de novo</button></span>
-  <span id="telatoda" class="selo alerta" hidden title="Notificações, outras janelas e o que você digitar ficam visíveis para quem assiste. Para mostrar só o filme, compartilhe apenas a aba.">Tela inteira visível <button id="soaba">Trocar</button></span>
+  <span id="telatoda" class="selo alerta" hidden title="Notificações, outras janelas, o que você digitar e o som de todos os programas (Discord incluso) vão para quem assiste. Compartilhe só a aba, ou limite o som à janela do filme.">Tela inteira visível <button id="soaba">Trocar</button> <button id="soprograma">Som de um programa só</button></span>
   <label>Qualidade
     <select id="qualidade">
       <option value="3">Econômica (3 Mbps)</option>
@@ -185,13 +185,15 @@ async function conferir(resposta, desafio, salaId) {
 
 // ---------- quem compartilha ----------
 
+// filtros de voz desligados: eles destroem música e efeitos de filme
+const SOM_LIMPO = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 };
+
 function capturar() {
   if (new URLSearchParams(location.search).has('teste')) return streamDeTeste();
   return navigator.mediaDevices.getDisplayMedia({
     // displaySurface: o seletor já abre na lista de abas, que é a opção que traz o som e não mostra o resto da tela
     video: { frameRate: 30, width: { max: 1920 }, height: { max: 1080 }, displaySurface: 'browser' },
-    // filtros de voz desligados: eles destroem música e efeitos de filme
-    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 },
+    audio: SOM_LIMPO,
     systemAudio: 'include',
     windowAudio: 'window',   // Chrome recente: oferece o áudio do programa ao compartilhar uma janela
     selfBrowserSurface: 'exclude',   // não oferece a própria aba da sessão
@@ -252,11 +254,8 @@ async function medir() {
   $('copiar').classList.toggle('principal', !chamadas.size);   // mandar o link é o próximo passo só enquanto a sala está vazia
 }
 
-// Captura (ou captura de novo) e passa a usar como fonte da sessão.
-async function trocarFonte() {
-  let nova;
-  try { nova = await capturar(); }
-  catch { avisar('Compartilhamento cancelado.'); return false; }
+// Passa a usar `nova` como fonte da sessão: prévia, avisos da barra e as faixas nas conexões já abertas.
+function usar(nova) {
   const antiga = stream;
   stream = nova;
   const [video] = stream.getVideoTracks(), [audio] = stream.getAudioTracks();
@@ -264,8 +263,7 @@ async function trocarFonte() {
   video.onended = parar;                      // botão "parar de compartilhar" do navegador
   $('semaudio').hidden = !!audio;
   $('telatoda').hidden = video.getSettings().displaySurface !== 'monitor';
-  avisar('');
-  tocar(new MediaStream([video]), { muted: true });   // prévia só com imagem: não tem como ela emitir som
+  if (video !== antiga?.getVideoTracks()[0]) tocar(new MediaStream([video]), { muted: true });   // prévia só com imagem: não tem como ela emitir som
   // Troca as faixas nas conexões já abertas, e quem assiste continua sem reconectar.
   // ponytail: quem entrou quando a fonte não tinha som não tem por onde receber o som novo; o PeerJS não
   // renegocia a conexão, então esse (e quem falhar na troca) é desconectado e reconecta sozinho.
@@ -274,8 +272,43 @@ async function trocarFonte() {
     if (!deVideo || (audio && !deAudio)) { c.close(); continue; }
     Promise.all([deVideo.replaceTrack(video), deAudio?.replaceTrack(audio ?? null)]).catch(() => c.close());
   }
-  antiga?.getTracks().forEach(t => { t.onended = null; t.stop(); });
+  antiga?.getTracks().filter(t => !nova.getTracks().includes(t)).forEach(t => { t.onended = null; t.stop(); janelaDoSom.get(t)?.stop(); });
+}
+
+// Captura (ou captura de novo) e passa a usar como fonte da sessão.
+async function trocarFonte() {
+  let nova;
+  try { nova = await capturar(); }
+  catch { avisar('Compartilhamento cancelado.'); return false; }
+  avisar('');
+  usar(nova);
   return true;
+}
+
+// A tela inteira leva o som de todos os programas, inclusive a chamada do Discord. O navegador não exclui um
+// programa do som do sistema, mas captura o som de uma única janela (Chrome/Edge 141+, Windows 11): a imagem
+// continua sendo a tela inteira e o som passa a vir só da janela escolhida, a do filme.
+const janelaDoSom = new WeakMap();   // faixa de som de uma janela → faixa de imagem dela, parada junto em usar()
+async function somDeUmPrograma() {
+  const captura = await navigator.mediaDevices.getDisplayMedia({
+    // A imagem da janela não é usada (por isso minúscula e a 1 quadro por segundo), mas é ela que avisa
+    // quando a janela fecha: a faixa de som por programa só fica muda.
+    video: { displaySurface: 'window', width: { max: 2 }, height: { max: 2 }, frameRate: { max: 1 } },
+    audio: SOM_LIMPO, windowAudio: 'window', systemAudio: 'exclude', selfBrowserSurface: 'exclude',
+  }).catch(() => null);
+  if (!captura) { avisar('Compartilhamento cancelado.'); return; }
+  const [audio] = captura.getAudioTracks(), [janela] = captura.getVideoTracks();
+  // Navegador antigo (ou Windows 10) ignora windowAudio e oferece o som do sistema inteiro no lugar: é o
+  // vazamento que este botão existe para evitar, então recusa. O Chromium marca essa faixa com o id 'loopback'.
+  if (!audio || audio.getSettings().deviceId === 'loopback') {
+    captura.getTracks().forEach(t => t.stop());
+    avisar('Não deu para pegar o som só dessa janela: marque a opção de áudio no seletor e use o Chrome ou Edge 141 ou mais novo, no Windows 11.');
+    return;
+  }
+  janelaDoSom.set(audio, janela);
+  janela.onended = () => { if (stream.getAudioTracks()[0] === audio) { usar(new MediaStream(stream.getVideoTracks())); avisar('A janela do som fechou.'); } };
+  usar(new MediaStream([...stream.getVideoTracks(), audio]));
+  avisar('O som agora vem só da janela escolhida.');
 }
 
 async function compartilhar() {
@@ -478,6 +511,7 @@ if (sala) {
     setTimeout(() => { $('copiar').textContent = 'Copiar link'; }, 1500);
   }, () => prompt('Copie o link da sala:', linkSala));   // sem permissão de área de transferência
   $('denovo').onclick = $('soaba').onclick = trocarFonte;
+  $('soprograma').onclick = somDeUmPrograma;
   $('qualidade').onchange = () => chamadas.forEach(limitar);
   // O codec é combinado na conexão: derruba as chamadas e os amigos reconectam sozinhos já com o novo.
   $('codec').onchange = () => [...chamadas].forEach(c => c.close());
