@@ -123,7 +123,7 @@ Este é um projeto pessoal, feito para um grupo pequeno de amigos, e não passou
 | [autorizados.json](autorizados.json) | Lista dos aparelhos que podem participar. |
 | [peerjs.min.js](peerjs.min.js) | Biblioteca PeerJS 1.5.5, que conecta os navegadores. |
 | [peerjs.LICENSE.txt](peerjs.LICENSE.txt) | Licença da PeerJS (MIT), que precisa acompanhar a cópia da biblioteca. |
-| [manifest.webmanifest](manifest.webmanifest), `icone.svg`, `icone-192.png`, `icone-512.png` | Nome e ícone da página para quem a instala como aplicativo. |
+| [manifest.webmanifest](manifest.webmanifest), `icone.svg`, `icone-192.png`, `icone-512.png`, `icone-maskable-512.png` | Nome e ícone da página para quem a instala como aplicativo. |
 | [LICENSE](LICENSE) | Licença deste projeto (MIT). |
 | `README.md` e `docs/` | Esta explicação e as imagens dela. |
 

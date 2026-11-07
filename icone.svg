@@ -1,24 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="ceu" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2b1a3a"/>
-      <stop offset=".6" stop-color="#c8472f"/>
-      <stop offset="1" stop-color="#ffcf70"/>
-    </linearGradient>
-    <clipPath id="tela"><rect x="108" y="150" width="296" height="172" rx="10"/></clipPath>
+    <clipPath id="ripa"><path d="M136 136h240a20 20 0 0 1 20 20v52H116v-52a20 20 0 0 1 20-20z"/></clipPath>
   </defs>
-  <rect width="512" height="512" fill="#0b0b0d"/>
-  <!-- tela com um pôr do sol -->
-  <g clip-path="url(#tela)">
-    <rect x="108" y="150" width="296" height="172" fill="url(#ceu)"/>
-    <circle cx="256" cy="262" r="42" fill="#ffe9a8"/>
-    <rect x="108" y="262" width="296" height="60" fill="#1a1016"/>
+  <rect width="512" height="512" rx="112" fill="#e8e6e1"/>
+  <!-- claquete: ripa listrada em cima, lousa embaixo -->
+  <g clip-path="url(#ripa)">
+    <rect x="116" y="136" width="280" height="72" fill="#17171a"/>
+    <path fill="#ffcf70" d="M116 208l36-72h36l-36 72zM188 208l36-72h36l-36 72zM260 208l36-72h36l-36 72zM332 208l36-72h36l-36 72z"/>
   </g>
-  <rect x="108" y="150" width="296" height="172" rx="10" fill="none" stroke="#e8e6e1" stroke-width="8"/>
-  <!-- poltronas -->
-  <g fill="#e8e6e1">
-    <rect x="150" y="356" width="56" height="26" rx="8"/>
-    <rect x="228" y="356" width="56" height="26" rx="8"/>
-    <rect x="306" y="356" width="56" height="26" rx="8"/>
-  </g>
+  <path fill="#17171a" d="M116 222h280v134a20 20 0 0 1-20 20H136a20 20 0 0 1-20-20z"/>
 </svg>
